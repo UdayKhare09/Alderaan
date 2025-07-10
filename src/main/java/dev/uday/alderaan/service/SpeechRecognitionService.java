@@ -28,7 +28,7 @@ import java.util.Map;
 public class SpeechRecognitionService {
 
     private final ObjectMapper objectMapper;
-    private Model model;
+    private final Model model;
 
 
     public SpeechRecognitionService(ObjectMapper objectMapper) throws IOException {

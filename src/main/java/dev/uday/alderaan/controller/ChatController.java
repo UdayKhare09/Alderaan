@@ -55,7 +55,7 @@ public class ChatController {
             Authentication authentication) {
 
         return chatService.getChatSessionById(sessionId)
-                .map(session -> ResponseEntity.ok(session))
+                .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
