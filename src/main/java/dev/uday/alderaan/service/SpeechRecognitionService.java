@@ -3,86 +3,82 @@ package dev.uday.alderaan.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.vosk.LibVosk;
-import org.vosk.LogLevel;
-import org.vosk.Model;
-import org.vosk.Recognizer;
-import org.springframework.core.io.ResourceLoader;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.sound.sampled.AudioFormat;
-import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
-import java.util.HashMap;
 import java.util.Map;
 
 @Service
 @Slf4j
 public class SpeechRecognitionService {
 
+    private static final String STT_API_URL = "http://127.0.0.1:5000/stt";
+    private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
-    private final Model model;
 
-
-    public SpeechRecognitionService(ObjectMapper objectMapper) throws IOException {
+    public SpeechRecognitionService(ObjectMapper objectMapper) {
+        this.httpClient = HttpClient.newHttpClient();
         this.objectMapper = objectMapper;
-
-        // Set up Vosk logging level
-        LibVosk.setLogLevel(LogLevel.INFO);
-
-
-        model = new Model("src/main/resources/models/vosk-model-en-in-0.5");
     }
 
-
     public String recognizeSpeech(MultipartFile audioFile) {
-        if (model == null) {
-            return "Speech recognition model is not available";
-        }
-
         try {
-            // Convert MultipartFile to AudioInputStream
-            byte[] audioBytes = audioFile.getBytes();
-            ByteArrayInputStream bais = new ByteArrayInputStream(audioBytes);
-            AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(bais);
+            // Save MultipartFile to a temp file
+            var tempFile = Files.createTempFile("audio", ".wav");
+            audioFile.transferTo(tempFile);
 
-            // Get audio format
-            AudioFormat format = audioInputStream.getFormat();
+            // Build multipart/form-data request
+            String boundary = "----JavaMultipartBoundary" + System.currentTimeMillis();
+            var byteArray = Files.readAllBytes(tempFile);
+            String fileName = audioFile.getOriginalFilename();
 
-            // Create recognizer
-            Recognizer recognizer = new Recognizer(model, format.getSampleRate());
+            String partHeader = "--" + boundary + "\r\n"
+                    + "Content-Disposition: form-data; name=\"audio\"; filename=\"" + fileName + "\"\r\n"
+                    + "Content-Type: audio/wav\r\n\r\n";
+            String partFooter = "\r\n--" + boundary + "--\r\n";
 
-            // Process audio
-            byte[] buffer = new byte[4096];
-            int bytesRead;
+            byte[] body = concat(
+                    partHeader.getBytes(),
+                    byteArray,
+                    partFooter.getBytes()
+            );
 
-            while ((bytesRead = audioInputStream.read(buffer)) != -1) {
-                if (recognizer.acceptWaveForm(buffer, bytesRead)) {
-                    // Partial result
-                    log.debug("Partial result: {}", recognizer.getResult());
-                }
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(STT_API_URL))
+                    .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(body))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            Files.deleteIfExists(tempFile);
+
+            if (response.statusCode() == 200) {
+                Map<String, Object> result = objectMapper.readValue(response.body(), Map.class);
+                return (String) result.getOrDefault("text", "");
+            } else {
+                log.error("STT API failed: {}", response.body());
+                return "";
             }
-
-            // Get final result
-            String result = recognizer.getFinalResult();
-            recognizer.close();
-
-            // Extract just the text from the JSON result
-            Map<String, Object> resultMap = objectMapper.readValue(result, HashMap.class);
-            String recognizedText = (String) resultMap.get("text");
-
-            return recognizedText;
-
-        } catch (Exception e) {
+        } catch (IOException | InterruptedException e) {
             log.error("Error during speech recognition", e);
-            return "Error recognizing speech: " + e.getMessage();
+            return "";
         }
+    }
+
+    private static byte[] concat(byte[]... arrays) throws IOException {
+        int total = 0;
+        for (byte[] arr : arrays) total += arr.length;
+        byte[] result = new byte[total];
+        int pos = 0;
+        for (byte[] arr : arrays) {
+            System.arraycopy(arr, 0, result, pos, arr.length);
+            pos += arr.length;
+        }
+        return result;
     }
 }
