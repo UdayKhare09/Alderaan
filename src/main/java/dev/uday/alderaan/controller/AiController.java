@@ -47,8 +47,8 @@ public class AiController {
             // Save user message
             ChatMessage userMessage = chatService.saveMessage(session, ChatMessage.MessageType.USER_TEXT, prompt);
 
-            // Get AI response
-            String aiResponse = aiService.getTextResponse(prompt);
+            // Get AI response with conversation history
+            String aiResponse = aiService.getTextResponseWithHistory(prompt, session);
 
             // Save AI response
             ChatMessage aiMessage = chatService.saveMessage(session, ChatMessage.MessageType.AI_TEXT, aiResponse);
@@ -92,11 +92,11 @@ public class AiController {
             // Save user message
             chatService.saveMessage(session, ChatMessage.MessageType.USER_TEXT, prompt);
 
-            // Get AI response with speech
-            byte[] audioData = aiService.getSpeechResponse(prompt);
-            String aiResponse = aiService.getTextResponse(prompt);
+            // Get AI response with speech and conversation history
+            byte[] audioData = aiService.getSpeechResponseWithHistory(prompt, session);
+            String aiResponse = aiService.getTextResponseWithHistory(prompt, session);
 
-            // Save AI response (we'll need to save the audio file path)
+            // Save AI response
             chatService.saveMessage(session, ChatMessage.MessageType.AI_AUDIO, aiResponse);
 
             if (audioData.length == 0) {
@@ -141,9 +141,9 @@ public class AiController {
             // Save user audio message
             chatService.saveMessage(session, ChatMessage.MessageType.USER_AUDIO, recognizedText);
 
-            // Get AI response and synthesize speech
-            byte[] audioResponse = aiService.getSpeechResponse(recognizedText);
-            String aiResponse = aiService.getTextResponse(recognizedText);
+            // Get AI response with conversation history and synthesize speech
+            byte[] audioResponse = aiService.getSpeechResponseWithHistory(recognizedText, session);
+            String aiResponse = aiService.getTextResponseWithHistory(recognizedText, session);
 
             // Save AI audio response
             chatService.saveMessage(session, ChatMessage.MessageType.AI_AUDIO, aiResponse);
